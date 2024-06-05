@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
+	"tgbot/admin"
 	"tgbot/storage"
 	"time"
 
@@ -28,7 +28,7 @@ func main() {
 	}
 	defer db.Close()
 
-	botToken := "5111237025:AAHhUYhFG4xuu6hVjhka8YuBYNBVnrtzGps"
+	botToken := "6902655696:AAEtKAL78CG86DhjAYb-QVQrTVAGysTpLDA"
 	botInstance, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatal(err)
@@ -77,7 +77,7 @@ func handleMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 	if state, exists := userStates[chatID]; exists {
 		switch state {
 		case "waiting_for_channel_link":
-			handleChannelLink(msg, db, botInstance)
+			admin.HandleChannelLink(msg, db, botInstance)
 			delete(userStates, chatID)
 			return
 		case "waiting_for_answers":
@@ -93,11 +93,11 @@ func handleMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 			delete(userStates, chatID)
 			return
 		case "waiting_for_admin_id":
-			handleAdminAdd(msg, db, botInstance)
+			admin.HandleAdminAdd(msg, db, botInstance)
 			delete(userStates, chatID)
 			return
 		case "waiting_for_admin_id_remove":
-			handleAdminRemove(msg, db, botInstance)
+			admin.HandleAdminRemove(msg, db, botInstance)
 			delete(userStates, chatID)
 			return
 		}
@@ -106,7 +106,7 @@ func handleMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 	if text == "/start" {
 		handleStartCommand(msg, db, botInstance)
 	} else if text == "/admin" {
-		handleAdminCommand(msg, db, botInstance)
+		admin.HandleAdminCommand(msg, db, botInstance)
 	} else {
 		handleDefaultMessage(msg, db, botInstance)
 	}
@@ -148,36 +148,6 @@ func handleStartCommand(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi
 	}
 }
 
-func handleAdminCommand(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
-	chatID := msg.Chat.ID
-
-	if !storage.IsAdmin(int(chatID), db) {
-		msgResponse := tgbotapi.NewMessage(chatID, "Siz admin emassiz.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	adminKeyboard := tgbotapi.NewReplyKeyboard(
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("Statistika"),
-			tgbotapi.NewKeyboardButton("Kanal qo'shish"),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("Kanal o'chirish"),
-			tgbotapi.NewKeyboardButton("Test faylini yuklash"),
-			tgbotapi.NewKeyboardButton("Test javoblarini yuklash"),
-		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("Admin qo'shish"),
-			tgbotapi.NewKeyboardButton("Admin o'chirish"),
-		),
-	)
-
-	msgResponse := tgbotapi.NewMessage(chatID, "Admin buyrug'lari:")
-	msgResponse.ReplyMarkup = adminKeyboard
-	botInstance.Send(msgResponse)
-}
-
 func handleCallbackQuery(callbackQuery *tgbotapi.CallbackQuery, db *sql.DB, botInstance *tgbotapi.BotAPI) {
 	chatID := callbackQuery.Message.Chat.ID
 	messageID := callbackQuery.Message.MessageID
@@ -211,12 +181,12 @@ func handleCallbackQuery(callbackQuery *tgbotapi.CallbackQuery, db *sql.DB, botI
 		handleCheckAnswers(chatID, messageID, botInstance)
 	} else if strings.HasPrefix(callbackQuery.Data, "delete_channel_") {
 		channel := strings.TrimPrefix(callbackQuery.Data, "delete_channel_")
-		askForChannelDeletionConfirmation(chatID, messageID, channel, botInstance)
+		admin.AskForChannelDeletionConfirmation(chatID, messageID, channel, botInstance)
 	} else if strings.HasPrefix(callbackQuery.Data, "confirm_delete_channel_") {
 		channel := strings.TrimPrefix(callbackQuery.Data, "confirm_delete_channel_")
-		deleteChannel(chatID, messageID, channel, db, botInstance)
+		admin.DeleteChannel(chatID, messageID, channel, db, botInstance)
 	} else if callbackQuery.Data == "cancel_delete_channel" {
-		cancelChannelDeletion(chatID, messageID, botInstance)
+		admin.CancelChannelDeletion(chatID, messageID, botInstance)
 	}
 }
 
@@ -267,7 +237,7 @@ func handleCheckAnswers(chatID int64, messageID int, botInstance *tgbotapi.BotAP
 	botInstance.Send(deleteMsg)
 
 	userStates[chatID] = "waiting_for_answers"
-	msg := tgbotapi.NewMessage(chatID, "Iltimos, javoblaringizni yuboring:")
+	msg := tgbotapi.NewMessage(chatID, "Iltimos, javoblaringizni quyidagi ketma-ketlikda yuboring. \n\n Namuna: abccd")
 	botInstance.Send(msg)
 }
 
@@ -297,27 +267,13 @@ func handleDefaultMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbota
 		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, admin ID sini o'chirish uchun yuboring:")
 		botInstance.Send(msgResponse)
 	case "Kanal o'chirish":
-		displayChannelsForDeletion(chatID, db, botInstance)
+		admin.DisplayChannelsForDeletion(chatID, db, botInstance)
+	case "Statistika":
+		admin.HandleStatistics(msg, db, botInstance)
 	default:
 		msgResponse := tgbotapi.NewMessage(chatID, "Har qanday boshqa xabarlarni shu yerda ko'rib chiqish mumkin")
 		botInstance.Send(msgResponse)
 	}
-}
-
-func handleChannelLink(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
-	chatID := msg.Chat.ID
-	channelLink := msg.Text
-
-	err := storage.AddChannelToDatabase(db, channelLink)
-	if err != nil {
-		log.Printf("Error adding channel to database: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Kanalni qo'shishda xatolik yuz berdi.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	msgResponse := tgbotapi.NewMessage(chatID, "Kanal muvaffaqiyatli qo'shildi.")
-	botInstance.Send(msgResponse)
 }
 
 func handleDocument(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
@@ -390,109 +346,6 @@ func handleAnswers(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 	botInstance.Send(msgResponse)
 }
 
-func handleAdminAdd(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
-	chatID := msg.Chat.ID
-	adminID, err := strconv.ParseInt(msg.Text, 10, 64)
-	if err != nil {
-		log.Printf("Error parsing admin ID: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Noto'g'ri admin ID formati.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	err = storage.AddAdminToDatabase(db, adminID)
-	if err != nil {
-		log.Printf("Error adding admin to database: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Admin qo'shishda xatolik yuz berdi.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	msgResponse := tgbotapi.NewMessage(chatID, "Admin muvaffaqiyatli qo'shildi.")
-	botInstance.Send(msgResponse)
-}
-
-func handleAdminRemove(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
-	chatID := msg.Chat.ID
-	adminID, err := strconv.ParseInt(msg.Text, 10, 64)
-	if err != nil {
-		log.Printf("Error parsing admin ID: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Noto'g'ri admin ID formati.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	err = storage.RemoveAdminFromDatabase(db, adminID)
-	if err != nil {
-		log.Printf("Error removing admin from database: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Admin o'chirishda xatolik yuz berdi.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	msgResponse := tgbotapi.NewMessage(chatID, "Admin muvaffaqiyatli o'chirildi.")
-	botInstance.Send(msgResponse)
-}
-
-func displayChannelsForDeletion(chatID int64, db *sql.DB, botInstance *tgbotapi.BotAPI) {
-	channels, err := storage.GetChannelsFromDatabase(db)
-	if err != nil {
-		log.Printf("Error getting channels from database: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Kanallarni olishda xatolik yuz berdi.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	var rows [][]tgbotapi.InlineKeyboardButton
-	for _, channel := range channels {
-		button := tgbotapi.NewInlineKeyboardButtonData(channel, "delete_channel_"+channel)
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(button))
-	}
-
-	inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
-	msgResponse := tgbotapi.NewMessage(chatID, "O'chirilishi kerak bo'lgan kanalni tanlang:")
-	msgResponse.ReplyMarkup = inlineKeyboard
-	botInstance.Send(msgResponse)
-}
-
-func askForChannelDeletionConfirmation(chatID int64, messageID int, channel string, botInstance *tgbotapi.BotAPI) {
-	confirmButton := tgbotapi.NewInlineKeyboardButtonData("Ha", "confirm_delete_channel_"+channel)
-	cancelButton := tgbotapi.NewInlineKeyboardButtonData("Yo'q", "cancel_delete_channel")
-
-	inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(confirmButton, cancelButton),
-	)
-	msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s kanalini o'chirmoqchimisiz?", channel))
-	msgResponse.ReplyMarkup = inlineKeyboard
-	botInstance.Send(msgResponse)
-
-	// Delete the previous message
-	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-	botInstance.Send(deleteMsg)
-}
-
-func deleteChannel(chatID int64, messageID int, channel string, db *sql.DB, botInstance *tgbotapi.BotAPI) {
-	err := storage.DeleteChannelFromDatabase(db, channel)
-	if err != nil {
-		log.Printf("Error deleting channel from database: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Kanalni o'chirishda xatolik yuz berdi.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
-	msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s kanali muvaffaqiyatli o'chirildi.", channel))
-	botInstance.Send(msgResponse)
-}
-
-func cancelChannelDeletion(chatID int64, messageID int, botInstance *tgbotapi.BotAPI) {
-	msgResponse := tgbotapi.NewMessage(chatID, "Kanal o'chirish bekor qilindi.")
-	botInstance.Send(msgResponse)
-
-	// Delete the previous message
-	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-	botInstance.Send(deleteMsg)
-}
-
 func checkAnswers(userAnswers, correctAnswers string) (int, []int) {
 	userAns := strings.ReplaceAll(userAnswers, "\n", "")
 	correctAns := strings.ReplaceAll(correctAnswers, "\n", "")
@@ -532,38 +385,6 @@ func saveFile(db *sql.DB, botInstance *tgbotapi.BotAPI, fileID, fileName, mimeTy
 	err = storage.AddFileMetadataToDatabase(db, fileID, fileName, mimeType, fileData)
 	if err != nil {
 		return fmt.Errorf("error saving file metadata to database: %v", err)
-	}
-
-	return nil
-}
-
-func saveAnswers(db *sql.DB, botInstance *tgbotapi.BotAPI, fileID, fileName, mimeType string) error {
-	fileConfig, err := botInstance.GetFile(tgbotapi.FileConfig{FileID: fileID})
-	if err != nil {
-		return fmt.Errorf("error getting file config: %v", err)
-	}
-
-	fileURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", botInstance.Token, fileConfig.FilePath)
-
-	response, err := http.Get(fileURL)
-	if err != nil {
-		return fmt.Errorf("error downloading file: %v", err)
-	}
-	defer response.Body.Close()
-
-	fileData, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return fmt.Errorf("error reading file data: %v", err)
-	}
-
-	err = storage.TruncateAnswersTable(db)
-	if err != nil {
-		return fmt.Errorf("error truncating answers table: %v", err)
-	}
-
-	err = storage.AddAnswersToDatabase(db, fileData)
-	if err != nil {
-		return fmt.Errorf("error saving answers to database: %v", err)
 	}
 
 	return nil

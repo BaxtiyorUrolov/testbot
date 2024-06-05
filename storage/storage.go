@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -127,4 +128,22 @@ func DeleteChannelFromDatabase(db *sql.DB, channel string) error {
 	query := `DELETE FROM channels WHERE name = $1`
 	_, err := db.Exec(query, channel)
 	return err
+}
+
+func GetTotalUsers(db *sql.DB) (int, error) {
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	return count, err
+}
+
+func GetTodayUsers(db *sql.DB) (int, error) {
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM users WHERE created_at >= $1", time.Now().Truncate(24*time.Hour)).Scan(&count)
+	return count, err
+}
+
+func GetLastMonthUsers(db *sql.DB) (int, error) {
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM users WHERE created_at >= $1", time.Now().AddDate(0, -1, 0)).Scan(&count)
+	return count, err
 }
