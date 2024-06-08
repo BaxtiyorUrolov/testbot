@@ -28,7 +28,7 @@ func main() {
 	}
 	defer db.Close()
 
-	botToken := "5111237025:AAHhUYhFG4xuu6hVjhka8YuBYNBVnrtzGps"
+	botToken := "6902655696:AAEtKAL78CG86DhjAYb-QVQrTVAGysTpLDA"
 	botInstance, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatal(err)
@@ -307,19 +307,24 @@ func handleDocument(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.Bot
 
 func handleTestAnswers(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
 	chatID := msg.Chat.ID
+	text := msg.Text
 
-	fmt.Println(msg.Text)
+	fmt.Println(text)
 
-	err := storage.AddAnswerToDatabase(db, msg.Text)
-	if err != nil {
-		log.Printf("Error adding answer to database: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Javoblarni qo'shishda xatolik yuz berdi.")
+	if storage.IsAdmin(int(chatID), db) {
+		err := storage.AddAnswerToDatabase(db, text)
+		if err != nil {
+			log.Printf("Error adding answer to database: %v", err)
+			msgResponse := tgbotapi.NewMessage(chatID, "Javoblarni qo'shishda xatolik yuz berdi.")
+			botInstance.Send(msgResponse)
+			return
+		}
+		msgResponse := tgbotapi.NewMessage(chatID, "Javoblar muvaffaqiyatli qo'shildi.")
 		botInstance.Send(msgResponse)
-		return
+	} else {
+		msgResponse := tgbotapi.NewMessage(chatID, "Faqat admin javoblarni qo'sha oladi.")
+		botInstance.Send(msgResponse)
 	}
-
-	msgResponse := tgbotapi.NewMessage(chatID, "Javoblar muvaffaqiyatli qo'shildi.")
-	botInstance.Send(msgResponse)
 }
 
 func handleAnswers(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
@@ -338,14 +343,8 @@ func handleAnswers(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 
 	log.Printf("Correct answers: %s", correctAnswers)
 
-	err = storage.AddAnswerToDatabase(db, userAnswers)
-	if err != nil {
-		log.Printf("Error saving answers: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Javoblarni saqlashda xatolik yuz berdi.")
-		botInstance.Send(msgResponse)
-		return
-	}
-
+	// Do not save userAnswers to the database
+	// Compare userAnswers with correctAnswers instead
 	correctCount, incorrectIndices := checkAnswers(userAnswers, correctAnswers)
 
 	msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("Javoblaringiz tekshirildi. To'g'ri javoblar soni: %d", correctCount))
@@ -354,6 +353,7 @@ func handleAnswers(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 	}
 	botInstance.Send(msgResponse)
 }
+
 
 func checkAnswers(userAnswers, correctAnswers string) (int, []int) {
 	userAns := strings.ReplaceAll(userAnswers, "\n", "")
