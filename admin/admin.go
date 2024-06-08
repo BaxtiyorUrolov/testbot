@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"tgbot/models"
 	"tgbot/storage"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
@@ -22,10 +24,13 @@ func HandleAdminCommand(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi
 	adminKeyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("Statistika"),
-			tgbotapi.NewKeyboardButton("Kanal qo'shish"),
+			tgbotapi.NewKeyboardButton("Habar yuborish"),
 		),
 		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("Kanal qo'shish"),
 			tgbotapi.NewKeyboardButton("Kanal o'chirish"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("Test faylini yuklash"),
 			tgbotapi.NewKeyboardButton("Test javoblarini yuklash"),
 		),
@@ -194,5 +199,46 @@ func HandleStatistics(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.B
 	)
 
 	msgResponse := tgbotapi.NewMessage(chatID, statsMessage)
+	botInstance.Send(msgResponse)
+}
+
+func HandleBroadcastMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
+	chatID := msg.Chat.ID
+	if msg.Text == "/cancel" {
+		msgResponse := tgbotapi.NewMessage(chatID, "Habar yuborish bekor qilindi.")
+		botInstance.Send(msgResponse)
+		return
+	}
+
+	users, err := storage.GetAllUsers(db)
+	if err != nil {
+		log.Printf("Error retrieving users: %v", err)
+		msgResponse := tgbotapi.NewMessage(chatID, "Foydalanuvchilarni olishda xatolik yuz berdi.")
+		botInstance.Send(msgResponse)
+		return
+	}
+
+	go sendBroadcastMessage(users, msg.Text,chatID, botInstance)
+	msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("Habar %d foydalanuvchilarga yuborilmoqda...", len(users)))
+	botInstance.Send(msgResponse)
+}
+
+func sendBroadcastMessage(users []models.User, message string, adminChatID int64, botInstance *tgbotapi.BotAPI) {
+	ticker := time.NewTicker(200 * time.Millisecond) // Allows 5 messages per second
+	defer ticker.Stop()
+
+	count := 0
+	for _, user := range users {
+		<-ticker.C
+		msg := tgbotapi.NewMessage(int64(user.ID), message)
+		if _, err := botInstance.Send(msg); err != nil {
+			log.Printf("Error sending message to user %d: %v", user.ID, err)
+		} else {
+			count++
+		}
+	}
+
+	log.Printf("Broadcast completed. Sent %d messages.", count)
+	msgResponse := tgbotapi.NewMessage(adminChatID, fmt.Sprintf("BroadcasadminChatIDt completed. Sent %d messages.", count))
 	botInstance.Send(msgResponse)
 }

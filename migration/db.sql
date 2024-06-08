@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
     user_id BIGINT UNIQUE NOT NULL,
     name VARCHAR(30),
     rate INT,
+    status INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT NOW()
 );
 

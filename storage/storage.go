@@ -3,6 +3,8 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"tgbot/models"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -146,4 +148,25 @@ func GetLastMonthUsers(db *sql.DB) (int, error) {
 	var count int
 	err := db.QueryRow("SELECT COUNT(*) FROM users WHERE created_at >= $1", time.Now().AddDate(0, -1, 0)).Scan(&count)
 	return count, err
+}
+
+func GetAllUsers(db *sql.DB) ([]models.User, error) {
+	log.Println("GetAllUsers funksiyasi ishga tushdi") // Log qo'shish
+	query := `SELECT user_id, name, status FROM users`
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var user models.User
+		if err := rows.Scan(&user.ID, &user.Name, &user.Status); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
 }

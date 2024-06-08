@@ -65,6 +65,7 @@ func handleUpdate(update tgbotapi.Update, db *sql.DB, botInstance *tgbotapi.BotA
 		handleCallbackQuery(update.CallbackQuery, db, botInstance)
 	} else {
 		log.Printf("Unsupported update type: %T", update)
+		
 	}
 }
 
@@ -76,6 +77,10 @@ func handleMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 
 	if state, exists := userStates[chatID]; exists {
 		switch state {
+		case "waiting_for_broadcast_message":
+			admin.HandleBroadcastMessage(msg, db, botInstance)
+			delete(userStates, chatID)
+			return
 		case "waiting_for_channel_link":
 			admin.HandleChannelLink(msg, db, botInstance)
 			delete(userStates, chatID)
@@ -270,6 +275,10 @@ func handleDefaultMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbota
 		admin.DisplayChannelsForDeletion(chatID, db, botInstance)
 	case "Statistika":
 		admin.HandleStatistics(msg, db, botInstance)
+	case "Habar yuborish":
+		userStates[chatID] = "waiting_for_broadcast_message"
+		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, yubormoqchi bo'lgan habaringizni kiriting (Bekor qilish uchun /cancel):")
+		botInstance.Send(msgResponse)
 	default:
 		msgResponse := tgbotapi.NewMessage(chatID, "Har qanday boshqa xabarlarni shu yerda ko'rib chiqish mumkin")
 		botInstance.Send(msgResponse)
