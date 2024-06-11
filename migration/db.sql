@@ -2,7 +2,12 @@
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY NOT NULL,
     user_id BIGINT UNIQUE NOT NULL,
-    name VARCHAR(30),
+    full_name VARCHAR(50),
+    region VARCHAR(30),
+    district VARCHAR(30),
+    school INT,
+    grade INT,
+    phone VARCHAR(15),
     rate INT,
     status INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT NOW()

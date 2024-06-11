@@ -18,9 +18,9 @@ func OpenDatabase(connStr string) (*sql.DB, error) {
 	return db, nil
 }
 
-func AddUserToDatabase(db *sql.DB, userID int, userName string) error {
-	query := `INSERT INTO users (user_id, name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING`
-	_, err := db.Exec(query, userID, userName)
+func AddUserToDatabase(db *sql.DB, userID int) error {
+	query := `INSERT INTO users (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`
+	_, err := db.Exec(query, userID)
 	return err
 }
 
@@ -152,7 +152,7 @@ func GetLastMonthUsers(db *sql.DB) (int, error) {
 
 func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	log.Println("GetAllUsers funksiyasi ishga tushdi") // Log qo'shish
-	query := `SELECT user_id, name, status FROM users`
+	query := `SELECT user_id, full_name, status FROM users`
 	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
@@ -162,11 +162,89 @@ func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	var users []models.User
 	for rows.Next() {
 		var user models.User
-		if err := rows.Scan(&user.ID, &user.Name, &user.Status); err != nil {
+		if err := rows.Scan(&user.ID, &user.Status); err != nil {
 			return nil, err
 		}
 		users = append(users, user)
 	}
 
 	return users, nil
+}
+
+func UpdateUserFullName(db *sql.DB, userID int64, fullName string) error {
+	query := `UPDATE users SET full_name = $1 WHERE user_id = $2`
+	_, err := db.Exec(query, fullName, userID)
+	return err
+}
+
+func UpdateUserRegion(db *sql.DB, userID int64, region string) error {
+	query := `UPDATE users SET region = $1 WHERE user_id = $2`
+	_, err := db.Exec(query, region, userID)
+	return err
+}
+
+func UpdateUserDistrict(db *sql.DB, userID int64, district string) error {
+	query := `UPDATE users SET district = $1 WHERE user_id = $2`
+	_, err := db.Exec(query, district, userID)
+	return err
+}
+
+func UpdateUserSchool(db *sql.DB, userID int64, school string) error {
+	query := `UPDATE users SET school = $1 WHERE user_id = $2`
+	_, err := db.Exec(query, school, userID)
+	return err
+}
+
+func UpdateUserGrade(db *sql.DB, userID int64, grade string) error {
+	query := `UPDATE users SET grade = $1 WHERE user_id = $2`
+	_, err := db.Exec(query, grade, userID)
+	return err
+}
+
+func UpdateUserPhone(db *sql.DB, userID int64, phone string) error {
+	query := `UPDATE users SET phone = $1 WHERE user_id = $2`
+	_, err := db.Exec(query, phone, userID)
+	return err
+}
+
+func GetUserFromDatabase(db *sql.DB, userID int64) (models.User, error) {
+
+	var (
+		user     models.User
+		fullNameStr  sql.NullString
+		regionStr sql.NullString
+		districtStr sql.NullString
+		schoolStr sql.NullString
+		gradeStr sql.NullString
+		phoneStr sql.NullString
+	)
+
+	query := `SELECT user_id, full_name, region, district, school, grade, phone FROM users WHERE user_id = $1`
+	err := db.QueryRow(query, userID).Scan(&userID, &fullNameStr, &regionStr, &districtStr, &schoolStr, &gradeStr, &phoneStr)
+
+	if fullNameStr.Valid {
+		user.FullName = fullNameStr.String
+	}
+
+	if regionStr.Valid {
+		user.Region = regionStr.String
+	}
+
+	if districtStr.Valid {
+		user.District = districtStr.String
+	}
+
+	if schoolStr.Valid {
+		user.School = schoolStr.String
+	}
+
+	if gradeStr.Valid {
+		user.Grade = gradeStr.String
+	}
+
+	if phoneStr.Valid {
+		user.Phone = phoneStr.String
+	}
+
+	return user, err
 }

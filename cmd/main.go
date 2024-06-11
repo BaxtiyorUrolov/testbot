@@ -12,13 +12,13 @@ import (
 	"strings"
 	"syscall"
 	"tgbot/admin"
+	"tgbot/register"
 	"tgbot/storage"
+	"tgbot/stats"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
-
-var userStates = make(map[int64]string)
 
 func main() {
 	connStr := "user=godb password=0208 dbname=testbot sslmode=disable"
@@ -28,7 +28,7 @@ func main() {
 	}
 	defer db.Close()
 
-	botToken := "6902655696:AAEtKAL78CG86DhjAYb-QVQrTVAGysTpLDA"
+	botToken := "5111237025:AAHhUYhFG4xuu6hVjhka8YuBYNBVnrtzGps"
 	botInstance, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatal(err)
@@ -65,7 +65,6 @@ func handleUpdate(update tgbotapi.Update, db *sql.DB, botInstance *tgbotapi.BotA
 		handleCallbackQuery(update.CallbackQuery, db, botInstance)
 	} else {
 		log.Printf("Unsupported update type: %T", update)
-		
 	}
 }
 
@@ -75,35 +74,53 @@ func handleMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 
 	log.Printf("Received message: %s", text)
 
-	if state, exists := userStates[chatID]; exists {
+	if state, exists := stats.UsStats[chatID]; exists {
 		switch state {
 		case "waiting_for_broadcast_message":
 			admin.HandleBroadcastMessage(msg, db, botInstance)
-			delete(userStates, chatID)
+			delete(stats.UsStats, chatID)
 			return
 		case "waiting_for_channel_link":
 			admin.HandleChannelLink(msg, db, botInstance)
-			delete(userStates, chatID)
+			delete(stats.UsStats, chatID)
 			return
 		case "waiting_for_answers":
 			handleAnswers(msg, db, botInstance)
-			delete(userStates, chatID)
+			delete(stats.UsStats, chatID)
 			return
 		case "waiting_for_test_file":
 			handleDocument(msg, db, botInstance)
-			delete(userStates, chatID)
+			delete(stats.UsStats, chatID)
 			return
 		case "waiting_for_test_answers":
 			handleTestAnswers(msg, db, botInstance)
-			delete(userStates, chatID)
+			delete(stats.UsStats, chatID)
 			return
 		case "waiting_for_admin_id":
 			admin.HandleAdminAdd(msg, db, botInstance)
-			delete(userStates, chatID)
+			delete(stats.UsStats, chatID)
 			return
 		case "waiting_for_admin_id_remove":
 			admin.HandleAdminRemove(msg, db, botInstance)
-			delete(userStates, chatID)
+			delete(stats.UsStats, chatID)
+			return
+		case "waiting_for_full_name":
+			register.HandleFullName(msg, db, botInstance)
+			return
+		case "waiting_for_region":
+			register.HandleRegion(msg, db, botInstance)
+			return
+		case "waiting_for_district":
+			register.HandleDistrict(msg, db, botInstance)
+			return
+		case "waiting_for_school":
+			register.HandleSchool(msg, db, botInstance)
+			return
+		case "waiting_for_grade":
+			register.HandleGrade(msg, db, botInstance)
+			return
+		case "waiting_for_phone":
+			register.HandlePhone(msg, db, botInstance)
 			return
 		}
 	}
@@ -120,10 +137,9 @@ func handleMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 func handleStartCommand(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
 	chatID := msg.Chat.ID
 	userID := msg.From.ID
-	userName := msg.From.UserName
 
-	log.Printf("Adding user to database: %d - %s", userID, userName)
-	err := storage.AddUserToDatabase(db, userID, userName)
+	log.Printf("Adding user to database: %d ", userID)
+	err := storage.AddUserToDatabase(db, userID)
 	if err != nil {
 		log.Printf("Error adding user to database: %v", err)
 		return
@@ -137,6 +153,22 @@ func handleStartCommand(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi
 
 	log.Printf("Checking subscription for user %d", chatID)
 	if isUserSubscribedToChannels(chatID, channels, botInstance) {
+
+		user, err := storage.GetUserFromDatabase(db, chatID)
+		if err != nil {
+			log.Printf("Error getting user from database: %v", err)
+			return
+		}
+
+		fmt.Println("Full:", user.FullName)
+
+		if user.FullName == "" {
+			stats.UsStats[chatID] = "waiting_for_full_name"
+			msg := tgbotapi.NewMessage(chatID, "Iltimos, ism va familyangizni kiriting: \n\n Namuna: Baxtiyor Urolov")
+			botInstance.Send(msg)
+			return
+		}
+
 		msg := tgbotapi.NewMessage(chatID, "Assalomu alaykum, botimizga xush kelibsiz!")
 		startTestButton := tgbotapi.NewInlineKeyboardButtonData("Testni boshlash", "start_test")
 		inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(
@@ -165,8 +197,23 @@ func handleCallbackQuery(callbackQuery *tgbotapi.CallbackQuery, db *sql.DB, botI
 
 	if callbackQuery.Data == "check_subscription" {
 		if isUserSubscribedToChannels(chatID, channels, botInstance) {
+
 			deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 			botInstance.Send(deleteMsg)
+			user, err := storage.GetUserFromDatabase(db, chatID)
+		if err != nil {
+			log.Printf("Error getting user from database: %v", err)
+			return
+		}
+
+		fmt.Println("Full:", user.FullName)
+
+		if user.FullName == "" {
+			stats.UsStats[chatID] = "waiting_for_full_name"
+			msg := tgbotapi.NewMessage(chatID, "Iltimos, ism va familyangizni kiriting: \n\n Namuna: Baxtiyor Urolov")
+			botInstance.Send(msg)
+			return
+		}
 			msg := tgbotapi.NewMessage(chatID, "Assalomu alaykum, siz kanallarga azo bo'ldingiz!")
 			startTestButton := tgbotapi.NewInlineKeyboardButtonData("Testni boshlash", "start_test")
 			inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(
@@ -241,7 +288,7 @@ func handleCheckAnswers(chatID int64, messageID int, botInstance *tgbotapi.BotAP
 	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 	botInstance.Send(deleteMsg)
 
-	userStates[chatID] = "waiting_for_answers"
+	stats.UsStats[chatID] = "waiting_for_answers"
 	msg := tgbotapi.NewMessage(chatID, "Iltimos, javoblaringizni quyidagi ketma-ketlikda yuboring. \n\n Namuna: abccd")
 	botInstance.Send(msg)
 }
@@ -252,23 +299,23 @@ func handleDefaultMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbota
 
 	switch text {
 	case "Kanal qo'shish":
-		userStates[chatID] = "waiting_for_channel_link"
+		stats.UsStats[chatID] = "waiting_for_channel_link"
 		msgResponse := tgbotapi.NewMessage(chatID, "Kanal linkini yuboring (masalan, https://t.me/your_channel):")
 		botInstance.Send(msgResponse)
 	case "Test faylini yuklash":
-		userStates[chatID] = "waiting_for_test_file"
+		stats.UsStats[chatID] = "waiting_for_test_file"
 		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, test faylini yuklang:")
 		botInstance.Send(msgResponse)
 	case "Test javoblarini yuklash":
-		userStates[chatID] = "waiting_for_test_answers"
+		stats.UsStats[chatID] = "waiting_for_test_answers"
 		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, test javoblarini yuboring:")
 		botInstance.Send(msgResponse)
 	case "Admin qo'shish":
-		userStates[chatID] = "waiting_for_admin_id"
+		stats.UsStats[chatID] = "waiting_for_admin_id"
 		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, yangi admin ID sini yuboring:")
 		botInstance.Send(msgResponse)
 	case "Admin o'chirish":
-		userStates[chatID] = "waiting_for_admin_id_remove"
+		stats.UsStats[chatID] = "waiting_for_admin_id_remove"
 		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, admin ID sini o'chirish uchun yuboring:")
 		botInstance.Send(msgResponse)
 	case "Kanal o'chirish":
@@ -276,7 +323,7 @@ func handleDefaultMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbota
 	case "Statistika":
 		admin.HandleStatistics(msg, db, botInstance)
 	case "Habar yuborish":
-		userStates[chatID] = "waiting_for_broadcast_message"
+		stats.UsStats[chatID] = "waiting_for_broadcast_message"
 		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, yubormoqchi bo'lgan habaringizni kiriting (Bekor qilish uchun /cancel):")
 		botInstance.Send(msgResponse)
 	default:
@@ -300,7 +347,7 @@ func handleDocument(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.Bot
 		return
 	}
 
-	userStates[chatID] = "waiting_for_answers"
+	stats.UsStats[chatID] = "waiting_for_answers"
 	msgResponse := tgbotapi.NewMessage(chatID, "Fayl muvaffaqiyatli saqlandi. Iltimos, endi javoblarni yuboring:")
 	botInstance.Send(msgResponse)
 }
