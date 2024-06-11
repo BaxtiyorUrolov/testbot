@@ -127,6 +127,7 @@ func handleMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotA
 
 	if text == "/start" {
 		handleStartCommand(msg, db, botInstance)
+		storage.AddUserToDatabase(db, int(msg.Chat.ID))
 	} else if text == "/admin" {
 		admin.HandleAdminCommand(msg, db, botInstance)
 	} else {

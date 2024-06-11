@@ -152,7 +152,7 @@ func GetLastMonthUsers(db *sql.DB) (int, error) {
 
 func GetAllUsers(db *sql.DB) ([]models.User, error) {
 	log.Println("GetAllUsers funksiyasi ishga tushdi") // Log qo'shish
-	query := `SELECT user_id, full_name, status FROM users`
+	query := `SELECT user_id, status FROM users`
 	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
