@@ -231,7 +231,7 @@ func HandleBroadcastMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbo
         photoFileID = (*msg.Photo)[len(*msg.Photo)-1].FileID
     }
 
-    go sendBroadcastMessage(users, msg.Text, photoFileID, chatID, botInstance)
+    go sendBroadcastMessage(users, msg.Caption, photoFileID, chatID, botInstance)
     msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("Habar %d foydalanuvchilarga yuborilmoqda...", len(users)))
     botInstance.Send(msgResponse)
 }
@@ -247,6 +247,7 @@ func sendBroadcastMessage(users []models.User, message, photoFileID string, admi
         if photoFileID != "" {
             photoMsg := tgbotapi.NewPhotoShare(int64(user.ID), photoFileID)
             photoMsg.Caption = message
+            photoMsg.ParseMode = "Markdown" // Yoki "HTML" agar kerak bo'lsa
             _, err = botInstance.Send(photoMsg)
         } else {
             msg := tgbotapi.NewMessage(int64(user.ID), message)
