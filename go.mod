@@ -7,4 +7,7 @@ require (
 	github.com/lib/pq v1.10.9
 )
 
-require github.com/technoweenie/multipartstreamer v1.0.1 // indirect
+require (
+	github.com/tealeg/xlsx v1.0.5 // indirect
+	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
+)

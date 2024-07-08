@@ -248,3 +248,24 @@ func GetUserFromDatabase(db *sql.DB, userID int64) (models.User, error) {
 
 	return user, err
 }
+
+func GetAllUsersDetailed(db *sql.DB) ([]models.User, error) {
+    query := `SELECT user_id, full_name, region, district, school, grade, phone FROM users`
+    rows, err := db.Query(query)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var users []models.User
+    for rows.Next() {
+        var user models.User
+        if err := rows.Scan(&user.ID, &user.FullName, &user.Region, &user.District, &user.School, &user.Grade, &user.Phone); err != nil {
+            log.Printf("Error scanning user: %v", err)
+            continue
+        }
+        users = append(users, user)
+    }
+
+    return users, nil
+}

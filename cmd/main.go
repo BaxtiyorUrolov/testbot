@@ -28,7 +28,7 @@ func main() {
 	}
 	defer db.Close()
 
-	botToken := "5111237025:AAHhUYhFG4xuu6hVjhka8YuBYNBVnrtzGps"
+	botToken := "6902655696:AAEtKAL78CG86DhjAYb-QVQrTVAGysTpLDA"
 	botInstance, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatal(err)
@@ -327,6 +327,10 @@ func handleDefaultMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbota
 		stats.UsStats[chatID] = "waiting_for_broadcast_message"
 		msgResponse := tgbotapi.NewMessage(chatID, "Iltimos, yubormoqchi bo'lgan habaringizni kiriting (Bekor qilish uchun /cancel):")
 		botInstance.Send(msgResponse)
+	case "DB olish":
+		admin.HandleDBDump(msg, db, botInstance)
+	case "Users olish":
+		admin.HandleUsersDump(msg, db, botInstance)
 	default:
 		msgResponse := tgbotapi.NewMessage(chatID, "Har qanday boshqa xabarlarni shu yerda ko'rib chiqish mumkin")
 		botInstance.Send(msgResponse)

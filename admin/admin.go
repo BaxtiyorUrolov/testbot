@@ -4,12 +4,15 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"strconv"
 	"tgbot/models"
 	"tgbot/storage"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	"github.com/tealeg/xlsx"
 )
 
 func HandleAdminCommand(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
@@ -38,6 +41,10 @@ func HandleAdminCommand(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi
 			tgbotapi.NewKeyboardButton("Admin qo'shish"),
 			tgbotapi.NewKeyboardButton("Admin o'chirish"),
 		),
+		tgbotapi.NewKeyboardButtonRow(
+            tgbotapi.NewKeyboardButton("DB olish"),  // New button added here
+			tgbotapi.NewKeyboardButton("Users olish"),
+        ),
 	)
 
 	msgResponse := tgbotapi.NewMessage(chatID, "Admin buyrug'lari:")
@@ -203,42 +210,185 @@ func HandleStatistics(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.B
 }
 
 func HandleBroadcastMessage(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
-	chatID := msg.Chat.ID
-	if msg.Text == "/cancel" {
-		msgResponse := tgbotapi.NewMessage(chatID, "Habar yuborish bekor qilindi.")
-		botInstance.Send(msgResponse)
-		return
-	}
+    chatID := msg.Chat.ID
 
-	users, err := storage.GetAllUsers(db)
-	if err != nil {
-		log.Printf("Error retrieving users: %v", err)
-		msgResponse := tgbotapi.NewMessage(chatID, "Foydalanuvchilarni olishda xatolik yuz berdi.")
-		botInstance.Send(msgResponse)
-		return
-	}
+    if msg.Text == "/cancel" {
+        msgResponse := tgbotapi.NewMessage(chatID, "Habar yuborish bekor qilindi.")
+        botInstance.Send(msgResponse)
+        return
+    }
 
-	go sendBroadcastMessage(users, msg.Text,chatID, botInstance)
-	msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("Habar %d foydalanuvchilarga yuborilmoqda...", len(users)))
-	botInstance.Send(msgResponse)
+    users, err := storage.GetAllUsers(db)
+    if err != nil {
+        log.Printf("Error retrieving users: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Foydalanuvchilarni olishda xatolik yuz berdi.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    var photoFileID string
+    if msg.Photo != nil {
+        photoFileID = (*msg.Photo)[len(*msg.Photo)-1].FileID
+    }
+
+    go sendBroadcastMessage(users, msg.Text, photoFileID, chatID, botInstance)
+    msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("Habar %d foydalanuvchilarga yuborilmoqda...", len(users)))
+    botInstance.Send(msgResponse)
 }
 
-func sendBroadcastMessage(users []models.User, message string, adminChatID int64, botInstance *tgbotapi.BotAPI) {
-	ticker := time.NewTicker(200 * time.Millisecond) // Allows 5 messages per second
-	defer ticker.Stop()
+func sendBroadcastMessage(users []models.User, message, photoFileID string, adminChatID int64, botInstance *tgbotapi.BotAPI) {
+    ticker := time.NewTicker(200 * time.Millisecond) // Allows 5 messages per second
+    defer ticker.Stop()
 
-	count := 0
-	for _, user := range users {
-		<-ticker.C
-		msg := tgbotapi.NewMessage(int64(user.ID), message)
-		if _, err := botInstance.Send(msg); err != nil {
-			log.Printf("Error sending message to user %d: %v", user.ID, err)
-		} else {
-			count++
-		}
-	}
+    count := 0
+    for _, user := range users {
+        <-ticker.C
+        var err error
+        if photoFileID != "" {
+            photoMsg := tgbotapi.NewPhotoShare(int64(user.ID), photoFileID)
+            photoMsg.Caption = message
+            _, err = botInstance.Send(photoMsg)
+        } else {
+            msg := tgbotapi.NewMessage(int64(user.ID), message)
+            _, err = botInstance.Send(msg)
+        }
 
-	log.Printf("Broadcast completed. Sent %d messages.", count)
-	msgResponse := tgbotapi.NewMessage(adminChatID, fmt.Sprintf("BroadcasadminChatIDt completed. Sent %d messages.", count))
-	botInstance.Send(msgResponse)
+        if err != nil {
+            log.Printf("Error sending message to user %d: %v", user.ID, err)
+        } else {
+            count++
+        }
+    }
+
+    log.Printf("Broadcast completed. Sent %d messages.", count)
+    msgResponse := tgbotapi.NewMessage(adminChatID, fmt.Sprintf("Broadcast completed. Sent %d messages.", count))
+    botInstance.Send(msgResponse)
+}
+
+func HandleDBDump(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
+    chatID := msg.Chat.ID
+
+    if !storage.IsAdmin(int(chatID), db) {
+        msgResponse := tgbotapi.NewMessage(chatID, "Siz admin emassiz.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    filename := fmt.Sprintf("backup_%s.sql", timestamp)
+    cmd := exec.Command("pg_dump", "-U", "godb", "-d", "testbot", "-f", filename) // Adjust the command to match your DB settings
+
+    cmd.Env = append(os.Environ(), "PGPASSWORD=0208")  // Add the password to the environment variables
+
+    output, err := cmd.CombinedOutput()  // Capture combined stdout and stderr output
+    if err != nil {
+        log.Printf("Error dumping database: %v\nOutput: %s", err, string(output))
+        msgResponse := tgbotapi.NewMessage(chatID, fmt.Sprintf("Database dumping failed. Output: %s", string(output)))
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    fileBytes, err := os.ReadFile(filename)
+    if err != nil {
+        log.Printf("Error reading dump file: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Error reading dump file.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    document := tgbotapi.NewDocumentUpload(chatID, tgbotapi.FileBytes{
+        Name:  filename,
+        Bytes: fileBytes,
+    })
+    if _, err := botInstance.Send(document); err != nil {
+        log.Printf("Error sending dump file: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Error sending dump file.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    // Optionally, delete the file after sending it
+    os.Remove(filename)
+}
+
+func HandleUsersDump(msg *tgbotapi.Message, db *sql.DB, botInstance *tgbotapi.BotAPI) {
+    chatID := msg.Chat.ID
+
+    if !storage.IsAdmin(int(chatID), db) {
+        msgResponse := tgbotapi.NewMessage(chatID, "Siz admin emassiz.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    timestamp := time.Now().Format("20060102_150405")
+    filename := fmt.Sprintf("users_%s.xlsx", timestamp)
+
+    file := xlsx.NewFile()
+    sheet, err := file.AddSheet("Users")
+    if err != nil {
+        log.Printf("Error creating sheet: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Excel fayl yaratishda xatolik yuz berdi.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    // Sarlavhalar qatorini qo'shish
+    row := sheet.AddRow()
+    row.AddCell().Value = "ID"
+    row.AddCell().Value = "Full Name"
+    row.AddCell().Value = "Region"
+    row.AddCell().Value = "District"
+    row.AddCell().Value = "School"
+    row.AddCell().Value = "Grade"
+    row.AddCell().Value = "Phone"
+
+    users, err := storage.GetAllUsersDetailed(db)
+    if err != nil {
+        log.Printf("Error retrieving users: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Foydalanuvchilarni olishda xatolik yuz berdi.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    // Foydalanuvchilar ma'lumotlarini qo'shish
+    for _, user := range users {
+        row := sheet.AddRow()
+        row.AddCell().Value = fmt.Sprint(user.ID)
+        row.AddCell().Value = user.FullName
+        row.AddCell().Value = user.Region
+        row.AddCell().Value = user.District
+        row.AddCell().Value = user.School
+        row.AddCell().Value = user.Grade
+        row.AddCell().Value = user.Phone
+    }
+
+    err = file.Save(filename)
+    if err != nil {
+        log.Printf("Error saving Excel file: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Excel faylini saqlashda xatolik yuz berdi.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    fileBytes, err := os.ReadFile(filename)
+    if err != nil {
+        log.Printf("Excel faylini o'qishda xatolik: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Excel faylini o'qishda xatolik.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    document := tgbotapi.NewDocumentUpload(chatID, tgbotapi.FileBytes{
+        Name:  filename,
+        Bytes: fileBytes,
+    })
+    if _, err := botInstance.Send(document); err != nil {
+        log.Printf("Excel faylini yuborishda xatolik: %v", err)
+        msgResponse := tgbotapi.NewMessage(chatID, "Excel faylini yuborishda xatolik.")
+        botInstance.Send(msgResponse)
+        return
+    }
+
+    // Ixtiyoriy ravishda faylni yuborganingizdan keyin o'chirishingiz mumkin
+    os.Remove(filename)
 }
